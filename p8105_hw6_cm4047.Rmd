@@ -1,0 +1,7 @@
+---
+title: "HW6"
+author: "Chen Mo"
+date: "12/7/2020"
+output: github_document
+---
+
