@@ -103,5 +103,109 @@ models_results_df %>%
 
 
 
-## Problem 2
+# Problem 2
+
+First, load and clean data.
+```{r}
+baby_df = 
+  read_csv("./data/birthweight.csv") %>% 
+        janitor::clean_names() %>% 
+        mutate(
+                frace = case_when(
+                        frace == 1 ~ "White",
+                        frace == 2 ~ "Black",
+                        frace == 3 ~ "Asian",
+                        frace == 4 ~ "Puero Rican",
+                        frace == 8 ~ "Other",
+                        frace == 9 ~ "Unknown"
+                ),
+                mrace = case_when(
+                        mrace == 1 ~ "White",
+                        mrace == 2 ~ "Black",
+                        mrace == 3 ~ "Asian",
+                        mrace == 4 ~ "Puero Rican",
+                        mrace == 8 ~ "Other",
+                        mrace == 9 ~ "Unknown"
+                ),
+                malform = case_when(
+                        malform == 0 ~ "absent",
+                        malform == 1 ~ "present"),
+                babysex = case_when(
+                        babysex == 1 ~ "male",
+                        babysex == 2 ~ "female"
+                ),
+                babysex = as_factor(babysex),
+                frace = as_factor(frace),
+                malform = as_factor(malform),
+                mrace = as_factor(mrace)
+        ) %>% 
+        na.omit()
+```
+
+I use both-way stepwise method to fit a model.
+```{r, include=FALSE}
+model_fit = 
+        lm(bwt ~ ., data = baby_df) %>% 
+        step(direction='both')
+```
+
+```{r}
+model_fit %>% 
+        broom::tidy() %>% 
+        knitr::kable()
+```
+
+by using step function in R, I fit a model using predictors shown above.  
+
+I use R to create a plot of model residuals against fitted values.  
+```{r}
+baby_df %>% 
+  modelr::add_residuals(model_fit) %>% 
+  add_predictions(model_fit) %>% 
+  ggplot(aes(x = pred, y = resid)) + 
+        geom_point() + 
+        geom_smooth(method = "lm")
+```
+
+Then, I compare my model to two others in terms of the cross-validated prediction error.    
+```{r}
+model_fit =
+  terms(model_fit) %>% 
+  attr("term.labels") %>% 
+  str_c(.,collapse = "+") %>% 
+  str_c("bwt~",.) %>% 
+  as.formula()
+cv_df = crossv_mc(baby_df, 100)
+cv_df = 
+        cv_df %>% 
+        mutate(
+                train = map(train, as_tibble),
+                test = map(test, as_tibble)
+        ) %>% 
+        mutate(
+                md_stepwise = map(.x = train, ~ do.call("lm", list(model_fit, data = .x))),
+                md_example1 = map(.x = train, ~lm(bwt ~blength + gaweeks, data = .x)),
+                md_example2 = map(.x = train, ~lm(bwt ~blength * bhead *babysex, data = .x))
+        ) %>% 
+        mutate(
+                rmse_stepwise = map2_dbl(md_stepwise, test, ~rmse(model = .x, data = .y)),
+                rmse_example1 = map2_dbl(md_example1, test, ~rmse(model = .x, data = .y)),
+                rmse_example2 = map2_dbl(md_example2, test, ~rmse(model = .x, data = .y)))
+```
+
+Then, I make a plot to make this comparison more straightforward.  
+```{r}
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin()
+```
+
+From the plots above, we can see that the model which I fit(using both-way stepwise method) has lowest RMSE compared to other two models. And the second example model has lower RMSE compared to the first example mode.  
+
 
