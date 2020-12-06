@@ -175,6 +175,7 @@ model_fit =
   str_c(.,collapse = "+") %>% 
   str_c("bwt~",.) %>% 
   as.formula()
+set.seed(1)
 cv_df = crossv_mc(baby_df, 100)
 cv_df = 
         cv_df %>% 
@@ -207,5 +208,69 @@ cv_df %>%
 ```
 
 From the plots above, we can see that the model which I fit(using both-way stepwise method) has lowest RMSE compared to other two models. And the second example model has lower RMSE compared to the first example mode.  
+
+# Problem 3  
+
+Load the data.  
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+Produce bootstrap sample  
+```{r}
+set.seed(1)
+boot_strap = 
+        weather_df %>% 
+        modelr::bootstrap( n = 5000) %>% 
+        mutate(
+                models = map(.x = strap, ~lm(tmax~tmin, data = .x)),
+                results_tidy = map(models, broom::tidy),
+                results_glance = map(models, broom::glance)
+        ) %>% 
+        select(-strap, -models) %>% 
+        unnest(results_tidy, results_glance) %>% 
+        select(.id, term, estimate, r.squared) %>% 
+        pivot_wider(names_from = term,
+                    values_from = estimate) %>% 
+        mutate(
+                log_beta1_2 = log(`(Intercept)`*tmin)
+        ) %>% 
+        select(.id, r.squared, log_beta1_2)
+```
+
+Then I will identify the 0.025 and 0.975 quantiles to provide a 95% confidence interval for r.squared and log(β̂ 0∗β̂ 1).  
+```{r}
+quantile(boot_strap$r.squared, probs = c(0.025,0.975)) %>% 
+  knitr::kable(caption = "95% CI for r.suqared")
+quantile(boot_strap$log_beta1_2, probs = c(0.025,0.975)) %>% 
+  knitr::kable(caption = "95% CI for log beta 0 and beta 1")
+```
+
+Lastly, I will plot the distribution of r squared estimates and the distribution of log $\beta 1$ * $\beta 2$ estimates.
+```{r}
+ggplot(data = boot_strap, aes(x = r.squared)) +
+  geom_density() +
+      labs(
+        title = "Distribution of estimates of r.squared",
+        x = "r.squared estimates")
+
+ggplot(data = boot_strap, aes(x = log_beta1_2)) +
+  geom_density() +
+    labs(
+        title = "Distribution of estimates of log product",
+        x = "log product estimates")
+```
+
+As we can see, both the distributions of estimates of r squared and log $\beta 1$ * $\beta 2$ estimates are approximately normal distribution. Besides, a very large proportion of r square are more than 0.9, and this indicates that tmin is a very good indicator of tmax.
 
 
